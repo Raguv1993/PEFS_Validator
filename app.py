@@ -8,7 +8,7 @@ st.set_page_config(page_title="PEFS Drawing Validator", layout="centered")
 st.title("📘 PEFS Drawing Number Validator")
 st.markdown(
     "Upload **Drawing 1** and **Drawing 2**, then click **Start Validation**. "
-    "The output file will be directly available for download — nothing is stored locally."
+    "The output PDF will be generated in memory for direct download."
 )
 
 st.divider()
