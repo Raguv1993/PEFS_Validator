@@ -1,19 +1,16 @@
 import fitz
 import pandas as pd
-import io
 
 def extract_text_positions(pdf_input):
-    """Extract word positions and text from a PDF.
-       Supports both file paths and in-memory bytes.
-    """
-    # Handle both cases: path or UploadedFile
-    if hasattr(pdf_input, "read"):  # Streamlit uploaded file (in-memory)
+    """Extract text from either a file path or a Streamlit UploadedFile (in-memory)."""
+    # Handle both in-memory and local files
+    if hasattr(pdf_input, "read"):
         pdf_bytes = pdf_input.read()
         doc = fitz.open("pdf", pdf_bytes)
     elif isinstance(pdf_input, (bytes, bytearray)):
         doc = fitz.open("pdf", pdf_input)
     else:
-        doc = fitz.open(pdf_input)  # File path on disk
+        doc = fitz.open(pdf_input)
 
     data = []
     for page_num, page in enumerate(doc, start=1):
