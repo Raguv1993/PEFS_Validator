@@ -2,6 +2,10 @@ import streamlit as st
 from core.verifier import verify_drawings_memory
 from pathlib import Path
 import io
+import subprocess, streamlit as st
+
+st.text(subprocess.getoutput("pdfinfo -v"))
+st.text(subprocess.getoutput("tesseract --version"))
 
 # -------------------- PAGE CONFIG --------------------
 st.set_page_config(page_title="PEFS Drawing Validator", layout="wide")
@@ -105,3 +109,4 @@ if drawing1 and drawing2:
             )
 else:
     st.warning("📂 Please upload both Drawing 1 and Drawing 2 before starting validation.")
+
