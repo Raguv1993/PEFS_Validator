@@ -1,0 +1,8 @@
+{
+  "alignment_anchor": "PROJECT",
+  "tolerance_coordinate": 0.75,
+  "tolerance_alignment": 2.0,
+  "scale_correction": true,
+  "scan_prefix": "5-AD",
+  "mode": "forward_scan"
+}
