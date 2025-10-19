@@ -49,16 +49,28 @@ def verify_drawings_memory(
     prefix = settings["scan_prefix"]
 
     df_map = pd.read_csv(mapping_csv)
-    df1 = extract_text_positions(drawing1_bytes)
-    df2 = extract_text_positions(drawing2_bytes)
+
+    # ✅ Read uploads once into memory
+    drawing1_data = drawing1_bytes.read()
+    drawing2_data = drawing2_bytes.read()
+
+    # ✅ Extract text from byte data
+    df1 = extract_text_positions(drawing1_data)
+    df2 = extract_text_positions(drawing2_data)
+
+    # ✅ Align coordinates
     df1 = align_coordinate_system(df1, df2, settings)
 
+    # ✅ Mapping dictionary
     map_dict = {
         str(row["Drawing1_No"]).strip().upper(): str(row["Drawing2_No"]).strip().upper()
         for _, row in df_map.iterrows()
     }
 
-    doc2 = fitz.open("pdf", drawing2_bytes.read())
+    # ✅ Open Drawing 2 once from memory
+    doc2 = fitz.open("pdf", drawing2_data)
+
+    # ✅ Begin comparison
     df1_targets = df1[df1["text"].str.match(prefix, case=False, na=False)]
     total = len(df1_targets)
 
@@ -71,6 +83,7 @@ def verify_drawings_memory(
         page_obj = doc2.load_page(page - 1)
 
         if tag_text not in map_dict:
+            # 🩵 Unmapped
             rect = fitz.Rect(x0 - 1, y0 - 1, x1 + 1, y1 + 1)
             ann = page_obj.add_rect_annot(rect)
             ann.set_colors(stroke=(0.53, 0.81, 0.92))
@@ -97,15 +110,18 @@ def verify_drawings_memory(
                     mismatched += 1
 
             rect = fitz.Rect(x0 - 1, y0 - 1, x1 + 1, y1 + 1)
-            ann = (page_obj.add_highlight_annot(rect)
-                   if color == (0, 1, 0)
-                   else page_obj.add_rect_annot(rect))
+            ann = (
+                page_obj.add_highlight_annot(rect)
+                if color == (0, 1, 0)
+                else page_obj.add_rect_annot(rect)
+            )
             ann.set_colors(stroke=color)
             ann.update()
 
         if progress_callback:
             progress_callback(i, total)
 
+    # ✅ Save to memory
     output_stream = io.BytesIO()
     doc2.save(output_stream)
     doc2.close()
@@ -120,3 +136,4 @@ def verify_drawings_memory(
 
     output_stream.seek(0)
     return output_stream, summary
+
