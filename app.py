@@ -3,6 +3,9 @@ from core.verifier import verify_drawings_memory
 from pathlib import Path
 import io
 import subprocess, streamlit as st
+import os
+os.system("sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils")
+
 
 st.text(subprocess.getoutput("pdfinfo -v"))
 st.text(subprocess.getoutput("tesseract --version"))
@@ -109,4 +112,5 @@ if drawing1 and drawing2:
             )
 else:
     st.warning("📂 Please upload both Drawing 1 and Drawing 2 before starting validation.")
+
 
