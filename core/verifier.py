@@ -110,12 +110,9 @@ def verify_drawings_memory(
                     mismatched += 1
 
             rect = fitz.Rect(x0 - 1, y0 - 1, x1 + 1, y1 + 1)
-            ann = (
-                page_obj.add_highlight_annot(rect)
-                if color == (0, 1, 0)
-                else page_obj.add_rect_annot(rect)
-            )
-            ann.set_colors(stroke=color)
+            ann = page_obj.add_rect_annot(rect)
+            ann.set_colors(stroke=color, fill=color)  # 🟩 stroke + fill color
+            ann.set_opacity(0.4)  # optional: adjust transparency (0 = transparent, 1 = solid)
             ann.update()
 
         if progress_callback:
@@ -136,4 +133,5 @@ def verify_drawings_memory(
 
     output_stream.seek(0)
     return output_stream, summary
+
 
