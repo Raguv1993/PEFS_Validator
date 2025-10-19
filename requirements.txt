@@ -1,4 +1,8 @@
 streamlit
 pandas
-PyMuPDF
+opencv-python
+pytesseract
+pdf2image
+pillow
 rapidfuzz
+PyMuPDF
