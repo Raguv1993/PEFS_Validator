@@ -1,0 +1,5 @@
+[server]
+headless = true
+
+[packages]
+system_packages = ["tesseract-ocr", "poppler-utils"]
