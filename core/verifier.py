@@ -56,7 +56,7 @@ def verify_drawings_memory(
     config_path="config/settings.json",
     progress_callback=None,
 ):
-    """Validate Drawing 2 using context-first logic."""
+    """Validate Drawing 2 using context-first logic, with QA debug output."""
     settings = load_settings(config_path)
     prefix_5ad = settings.get("scan_prefix", "5-AD")
 
@@ -82,19 +82,24 @@ def verify_drawings_memory(
     df1_targets = df1_ctx[df1_ctx["text"].str.startswith(prefix_5ad, na=False)]
     total = len(df1_targets)
 
-    # Prepare output PDF
+    # Prepare output PDF and debug list
     doc2 = fitz.open("pdf", drawing2_data)
     matched = mismatched = missing = unmapped = 0
+    debug_rows = []
 
     for i, row in enumerate(df1_targets.itertuples(), start=1):
         tag_5ad = row.text
         expected_rhl = map_dict.get(tag_5ad)
         color = (0.53, 0.81, 0.92)  # default Azure
+        result = "Unmapped"
+        found_rhl = "-"
+        confidence = 0
         rect = None
 
         if expected_rhl:
             # Step 1: find best-matching region by context
             best_row, score = find_best_context_region(row.context, df2_ctx)
+            confidence = score
 
             if best_row is not None:
                 region_text = best_row.context
@@ -103,19 +108,29 @@ def verify_drawings_memory(
                     best_row.x1 + 1, best_row.y1 + 1
                 )
 
-                # Step 2: check if expected RHL exists inside that region text
+                # Step 2: check if expected RHL exists inside that region
                 if expected_rhl in region_text:
                     color = (0, 1, 0)
                     matched += 1
+                    result = "Matched"
+                    found_rhl = expected_rhl
                 else:
                     color = (1, 0, 0)
                     mismatched += 1
+                    result = "Mismatched"
+                    # find possible RHL candidates in region
+                    for word in region_text.split():
+                        if word.startswith("RHL-"):
+                            found_rhl = word
+                            break
             else:
                 missing += 1
                 rect = fitz.Rect(row.x0 - 1, row.y0 - 1, row.x1 + 1, row.y1 + 1)
+                result = "Missing"
         else:
             unmapped += 1
             rect = fitz.Rect(row.x0 - 1, row.y0 - 1, row.x1 + 1, row.y1 + 1)
+            result = "Unmapped"
 
         # Annotate Drawing 2
         page_obj = doc2.load_page(row.page - 1)
@@ -124,14 +139,24 @@ def verify_drawings_memory(
         ann.set_opacity(0.4)
         ann.update()
 
+        # Save debug info
+        debug_rows.append({
+            "5-AD Number": tag_5ad,
+            "Expected RHL": expected_rhl or "-",
+            "Found RHL": found_rhl,
+            "Confidence": round(confidence, 1),
+            "Result": result
+        })
+
         if progress_callback:
             progress_callback(i, total)
 
-    # Save in memory
+    # Save annotated Drawing 2 to memory
     output_stream = io.BytesIO()
     doc2.save(output_stream)
     doc2.close()
 
+    # Summary
     summary = {
         "Total Tags Found": total,
         "Matched": matched,
@@ -139,5 +164,8 @@ def verify_drawings_memory(
         "Missing": missing,
         "Unmapped": unmapped,
     }
+
+    # Return both annotated PDF and debug DataFrame
     output_stream.seek(0)
-    return output_stream, summary
+    debug_df = pd.DataFrame(debug_rows)
+    return output_stream, summary, debug_df
