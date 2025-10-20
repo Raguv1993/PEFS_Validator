@@ -1,45 +1,40 @@
-import cv2
-import pytesseract
-import pandas as pd
-import numpy as np
-import io
-from pdf2image import convert_from_bytes
 import fitz
-from rapidfuzz import fuzz
+import pandas as pd
 import json
+import io
+from rapidfuzz import fuzz
 
 
-# ---------------- SETTINGS ----------------
+# ---------------- SETTINGS LOADER ----------------
 def load_settings(config_path="config/settings.json"):
     with open(config_path, "r") as f:
         return json.load(f)
 
 
-# ---------------- OCR TEXT EXTRACTOR ----------------
-def extract_text_positions_opencv(pdf_bytes, dpi=300):
-    """Convert each PDF page → image → OCR → return DataFrame of text boxes."""
-    pages = convert_from_bytes(pdf_bytes, dpi=dpi)
+# ---------------- TEXT EXTRACTOR ----------------
+def extract_text_positions(pdf_bytes):
+    """Extract all words with positions from a PDF (PyMuPDF)."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     rows = []
-    for page_no, pil_img in enumerate(pages, start=1):
-        img = np.array(pil_img.convert("RGB"))
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        gray = cv2.bilateralFilter(gray, 5, 75, 75)
-        _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        data = pytesseract.image_to_data(
-            th, lang="eng+deu", output_type=pytesseract.Output.DATAFRAME, config="--psm 6"
-        ).dropna(subset=["text"])
-        for _, r in data.iterrows():
-            txt = str(r["text"]).strip()
-            if not txt:
-                continue
-            x, y, w, h = int(r["left"]), int(r["top"]), int(r["width"]), int(r["height"])
-            rows.append({"page": page_no, "x0": x, "y0": y, "x1": x + w, "y1": y + h, "text": txt})
+    for page_no, page in enumerate(doc, start=1):
+        words = page.get_text("words")
+        for w in words:
+            x0, y0, x1, y1, text, *_ = w
+            rows.append({
+                "page": page_no,
+                "x0": x0,
+                "y0": y0,
+                "x1": x1,
+                "y1": y1,
+                "text": text.strip()
+            })
+    doc.close()
     return pd.DataFrame(rows)
 
 
 # ---------------- CONTEXT BUILDER ----------------
 def build_context(df, radius=250):
-    """Group neighbouring words to create context windows."""
+    """Build local text context around each detected tag."""
     contexts = []
     for _, tag in df.iterrows():
         same_page = df[df["page"] == tag["page"]]
@@ -62,7 +57,7 @@ def build_context(df, radius=250):
 
 # ---------------- CONTEXT MATCHER ----------------
 def find_best_context_region(src_context, df2_ctx, threshold=75):
-    """Find the most similar context region in Drawing 2."""
+    """Find the most similar region in Drawing 2."""
     best_row, best_score = None, 0
     for _, cand in df2_ctx.iterrows():
         score = fuzz.partial_ratio(src_context, cand["context"])
@@ -73,7 +68,7 @@ def find_best_context_region(src_context, df2_ctx, threshold=75):
     return None, best_score
 
 
-# ---------------- MAIN VALIDATOR ----------------
+# ---------------- MAIN VALIDATION ----------------
 def verify_drawings_memory(
     drawing1_bytes,
     drawing2_bytes,
@@ -81,41 +76,33 @@ def verify_drawings_memory(
     config_path="config/settings.json",
     progress_callback=None,
 ):
-    """Validate Drawing 2 against Drawing 1 using pure OpenCV + OCR."""
+    """Perform context-based validation and highlight Drawing 2."""
     settings = load_settings(config_path)
     prefix_5ad = settings.get("scan_prefix", "5-AD")
 
     df_map = pd.read_csv(mapping_csv)
-    drawing1_data = drawing1_bytes.read()
-    drawing2_data = drawing2_bytes.read()
+    df1 = extract_text_positions(drawing1_bytes)
+    df2 = extract_text_positions(drawing2_bytes)
 
-    # ---- OCR extraction ----
-    df1 = extract_text_positions_opencv(drawing1_data)
-    df2 = extract_text_positions_opencv(drawing2_data)
-
-    # ---- Build contexts ----
     df1_ctx = build_context(df1)
     df2_ctx = build_context(df2)
 
-    # ---- Mapping dictionary ----
     map_dict = {
-        str(r["Drawing1_No"]).strip().upper(): str(r["Drawing2_No"]).strip().upper()
-        for _, r in df_map.iterrows()
+        str(row["Drawing1_No"]).strip().upper(): str(row["Drawing2_No"]).strip().upper()
+        for _, row in df_map.iterrows()
     }
 
-    # ---- Targets (5-AD only) ----
     df1_targets = df1_ctx[df1_ctx["text"].str.startswith(prefix_5ad, na=False)]
     total = len(df1_targets)
 
-    # ---- Prepare PDF for highlighting ----
-    doc2 = fitz.open("pdf", drawing2_data)
+    doc2 = fitz.open(stream=drawing2_bytes, filetype="pdf")
     matched = mismatched = missing = unmapped = 0
     debug_rows = []
 
     for i, row in enumerate(df1_targets.itertuples(), start=1):
         tag_5ad = row.text
         expected_rhl = map_dict.get(tag_5ad)
-        color = (0.53, 0.81, 0.92)
+        color = (0.53, 0.81, 0.92)  # Azure default
         result = "Unmapped"
         found_rhl = "-"
         confidence = 0
@@ -126,40 +113,26 @@ def verify_drawings_memory(
             confidence = score
             if best_row is not None:
                 region_text = best_row.context
-                df2_rhl = df2[
-                    (df2["page"] == best_row.page)
-                    & (df2["text"].str.upper() == expected_rhl)
-                ]
-                if not df2_rhl.empty:
-                    x0, y0, x1, y1 = (
-                        df2_rhl.iloc[0]["x0"],
-                        df2_rhl.iloc[0]["y0"],
-                        df2_rhl.iloc[0]["x1"],
-                        df2_rhl.iloc[0]["y1"],
-                    )
-                    rect = fitz.Rect(x0 - 1, y0 - 1, x1 + 1, y1 + 1)
+                if expected_rhl in region_text:
                     color = (0, 1, 0)
                     result = "Matched"
                     matched += 1
                     found_rhl = expected_rhl
-                elif any(w.startswith("RHL-") for w in region_text.split()):
+                    rect = fitz.Rect(best_row.x0, best_row.y0, best_row.x1, best_row.y1)
+                elif "RHL-" in region_text:
                     color = (1, 0, 0)
                     result = "Mismatched"
                     mismatched += 1
-                    found_rhl = next((w for w in region_text.split() if w.startswith("RHL-")), "-")
-                    rect = fitz.Rect(best_row.x0 - 1, best_row.y0 - 1,
-                                     best_row.x1 + 1, best_row.y1 + 1)
+                    found_rhl = "RHL-" + region_text.split("RHL-")[1].split()[0]
+                    rect = fitz.Rect(best_row.x0, best_row.y0, best_row.x1, best_row.y1)
                 else:
-                    missing += 1
                     result = "Missing"
-                    rect = fitz.Rect(best_row.x0 - 1, best_row.y0 - 1,
-                                     best_row.x1 + 1, best_row.y1 + 1)
+                    missing += 1
             else:
-                missing += 1
                 result = "Missing"
+                missing += 1
         else:
             unmapped += 1
-            result = "Unmapped"
 
         page_obj = doc2.load_page(row.page - 1)
         ann = page_obj.add_rect_annot(rect)
@@ -178,7 +151,6 @@ def verify_drawings_memory(
         if progress_callback:
             progress_callback(i, total)
 
-    # ---- Save annotated PDF ----
     output_stream = io.BytesIO()
     doc2.save(output_stream)
     doc2.close()
@@ -190,6 +162,7 @@ def verify_drawings_memory(
         "Missing": missing,
         "Unmapped": unmapped,
     }
+
     debug_df = pd.DataFrame(debug_rows)
     output_stream.seek(0)
     return output_stream, summary, debug_df
