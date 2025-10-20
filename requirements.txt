@@ -1,4 +1,5 @@
-streamlit==1.50.0
+streamlit
 pandas
-pymupdf==1.23.26
+pymupdf
 rapidfuzz
+
