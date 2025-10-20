@@ -1,30 +1,16 @@
-It’s written for engineers — short, visual, and clear enough for anyone in your company to understand and deploy your PEFS Drawing Validator.
+# 🧠 PEFS Smart Drawing Validator
 
-📘 PEFS Drawing Validator
+A Streamlit-based app to validate PEFS drawings (MicroStation vs AVEVA)  
+by comparing `5-AD` numbers from Drawing 1 with mapped `RHL-` numbers in Drawing 2.
 
-An intelligent Drawing Number Validation Tool built using Streamlit and PyMuPDF.
-It compares two CAD-generated PDF drawings using a mapping file (mapping.csv) and visually highlights differences between drawing numbers.
+### 🚀 How It Works
+1. Extracts text and coordinates from both PDFs using PyMuPDF.  
+2. Looks for `5-AD` tags in Drawing 1.  
+3. Finds corresponding `RHL-` tags in Drawing 2 (using mapping.csv).  
+4. Highlights results:
+   - 🟩 Matched
+   - 🟥 Mismatched
+   - 🩵 Missing / Unmapped  
+5. Generates a QA report (CSV) + Annotated PDF.
 
-⚙️ Features
-
-🧩 Smart Forward Scan – Extracts all 5-AD... tags from Drawing 1 and maps them to RHL... codes via mapping.csv.
-
-🟩 Green → Correct mapping found at the same coordinate
-
-🟥 Red → Mismatched RHL at the same coordinate
-
-🩵 Azure → Missing or unmapped tag
-
-📊 Summary Table – Displays total, matched, mismatched, and missing counts
-
-🧠 All Processing In-Memory – No files are stored on disk
-
-🌐 Streamlit Web Interface – Just upload and click Start Validation
-
-| Category         | Count |
-| ---------------- | ----- |
-| Total Tags Found | 1245  |
-| Matched (🟩)     | 1180  |
-| Mismatched (🟥)  | 35    |
-| Missing (🩵)     | 20    |
-| Unmapped (🩵)    | 10    |
+### 🧩 Folder Structure
